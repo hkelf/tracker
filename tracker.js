@@ -4,59 +4,118 @@ let currentLogs, names;
 
 init();
 
+let stuffHappened = false;
+
 if (process.argv[3] == 'start') {
     start(process.argv[4]);
+    stuffHappened = true;
 } else if (process.argv[3] == 'stop') {
     stop(process.argv[4]);
-} else if (process.argv[3] == 'ls') {
-    ls(process.argv[4]);
+    stuffHappened = true;
+} else if (process.argv[3] == 'status') {
+    status(process.argv[4]);
 } else if (process.argv[3] == 'stop-all') {
     stopAll();
+    stuffHappened = true;
 } else if (process.argv[3] == 'add-min') {
     addMinutes(process.argv[4], process.argv[5]);
+    stuffHappened = true;
 } else if (process.argv[3] == 'add-hours') {
     addHours(process.argv[4], process.argv[5]);
+    stuffHappened = true;
+} else if (process.argv[3] == 'report') {
+    report();
 } else {
     console.log("Invalid command.");
     console.log(`
     tracker start [task] # Starts a task
     tracker stop [task] # Stops a task
-    tracker ls [state] # List all tasks or tasks by state (start / stop)
+    tracker stop-all [task] # Stops all tasks
+    tracker status [state] # List all tasks or tasks by state (start / stop)
+    tracker report # List time spent by task gathered by weeks
     tracker add-min [task] [minutes] # Add minutes to a task
     tracker add-hours [task] [hours] # Add hours to a task
     `)
 }
 
-function init() {
-    currentLogs = fs
-        .readFileSync(process.argv[2], 'utf-8')
-        .split('\n')
-        .map(line => {
-            const split = line.split(','); 
-            return {
-                event: split[0],
-                name: split[1],
-                ts: new Number(split[2])
-            }
-        });
-
-    if (!currentLogs[currentLogs.length -1]["name"]) {
-        currentLogs.pop();
-    }
-
-    names = [... new Set(currentLogs.map(log => log.name))];
+if (stuffHappened) {
+    init();
+    status();
 }
 
-function ls(event) {
+function report() {
+    const dailyLogs = {};
+  
+    // Group logs by day
+    currentLogs.forEach(log => {
+      const date = new Date(log.date).toLocaleDateString(); // Use log.date for day calculation
+      if (!dailyLogs[date]) {
+        dailyLogs[date] = {};
+      }
+      if (!dailyLogs[date][log.name]) {
+        dailyLogs[date][log.name] = 0;
+      }
+  
+      if (log.event === 'stop') {
+        // Calculate time difference between start and stop
+        const previousStart = currentLogs
+          .filter(l => l.name === log.name && l.event === 'start' && l.ts < log.ts)
+          .slice(-1)
+          .pop();
+        if (previousStart) {
+          dailyLogs[date][log.name] += log.ts - previousStart.ts;
+        }
+      } else if (log.event === 'add') {
+        // Add minutes/hours to the task
+        dailyLogs[date][log.name] += log.ts;
+      }
+    });
+  
+    // Display report
+    for (const date in dailyLogs) {
+        console.log(`\n${date} :`);
+        let totalTime = 0;
+        for (const task in dailyLogs[date]) {
+            const time = msToTime(dailyLogs[date][task]);
+            console.log(`${task.padEnd(20)} | ${time.padEnd(15)}`);
+            totalTime += dailyLogs[date][task];
+        }
+        console.log(`Total                | ${msToTime(totalTime).padEnd(15)}`);
+    }
+  }
+
+function init() {
+    try {
+        currentLogs = fs
+            .readFileSync(process.argv[2], 'utf-8')
+            .split('\n')
+            .map(line => {
+                const split = line.split(','); 
+                return {
+                    event: split[0],
+                    name: split[1],
+                    ts: new Number(split[2]),
+                    date: new Date(new Number(split[3]))
+                }
+            });
+
+        if (!currentLogs[currentLogs.length -1]["name"]) {
+            currentLogs.pop();
+        }
+
+        names = [... new Set(currentLogs.map(log => log.name))];
+    } catch (_) {
+        currentLogs = [];
+        names = [];
+    }
+}
+
+function status(event) {
     for (let i in names) {
         let name = names[i]
         let previousStartTime = null;
         let total = 0;
         let currentStatus = 'stop'
-
-        let nameMaxSize = 5;
-        let stateMaxSize = 5;
-        let timeMaxSize = 5;
 
         currentLogs
             .filter(log => log.name === name)
@@ -94,10 +153,7 @@ function ls(event) {
                 color = "\x1b[90m"
             }
 
-            nameMaxSize = Math.max(name.length, nameMaxSize);
-            nameMaxSize = Math.max(name.length, nameMaxSize);
-
-            console.log(color, `${name.padEnd(15)} | ${displayedStatus.padEnd(15)} | ${time.padEnd(15)}`, "\x1b[0m")
+            console.log(color, `${name.padEnd(20)} | ${displayedStatus.padEnd(15)} | ${time.padEnd(15)}`, "\x1b[0m")
         }
     }
 }
@@ -107,9 +163,7 @@ function start(name) {
         console.log(`${name} already started !`);
         return;
     }
-    fs.appendFileSync(process.argv[2], `start,${name},${Date.now()}\n`)
-    init();
-    ls();
+    fs.appendFileSync(process.argv[2], `start,${name},${Date.now()},${Date.now()}\n`)
 }
 
 function stop(name) {
@@ -118,14 +172,10 @@ function stop(name) {
         console.log(`${name} is not started !`);
         return;
     }
-    fs.appendFileSync(process.argv[2], `stop,${name},${Date.now()}\n`);
-    init();
-    ls();
+    fs.appendFileSync(process.argv[2], `stop,${name},${Date.now()},${Date.now()}\n`);
 }
 
 function stopAll() {
-    console.log(names.filter(name => isAlready("start", name)))
-
     names.filter(name => isAlready("start", name)).forEach(name => stop(name))
 }
 
@@ -136,7 +186,7 @@ function addMinutes(name, number) {
         return;
     }
 
-    fs.appendFileSync(process.argv[2], `add,${name},${number * 60 * 1000}\n`)
+    fs.appendFileSync(process.argv[2], `add,${name},${number * 60 * 1000},${Date.now()}\n`)
 }
 
 
@@ -147,7 +197,7 @@ function addHours(name, number) {
         return;
     }
 
-    fs.appendFileSync(process.argv[2], `add,${name},${hours * 60 * 60 * 1000}\n`)
+    fs.appendFileSync(process.argv[2], `add,${name},${hours * 60 * 60 * 1000},${Date.now()}\n`)
 }
 
 function isAlready(event, name) {
@@ -172,4 +222,4 @@ function msToTime(ms) {
     else if (minutes < 60) return minutes + " Min";
     else if (hours < 24) return hours + " Hrs";
     else return days + " Days"
-  }
+}
