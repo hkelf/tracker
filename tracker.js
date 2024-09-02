@@ -17,11 +17,8 @@ if (process.argv[3] == 'start') {
 } else if (process.argv[3] == 'stop-all') {
     stopAll();
     stuffHappened = true;
-} else if (process.argv[3] == 'add-min') {
+} else if (process.argv[3] == 'add') {
     addMinutes(process.argv[4], process.argv[5]);
-    stuffHappened = true;
-} else if (process.argv[3] == 'add-hours') {
-    addHours(process.argv[4], process.argv[5]);
     stuffHappened = true;
 } else if (process.argv[3] == 'report') {
     report();
@@ -33,8 +30,7 @@ if (process.argv[3] == 'start') {
     tracker stop-all [task] # Stops all tasks
     tracker status [state] # List all tasks or tasks by state (start / stop)
     tracker report # List time spent by task gathered by weeks
-    tracker add-min [task] [minutes] # Add minutes to a task
-    tracker add-hours [task] [hours] # Add hours to a task
+    tracker add [task] [minutes] # Add minutes to a task
     `)
 }
 
@@ -142,7 +138,7 @@ function status(event) {
 
         if (!event || event === currentStatus) {
             let displayedStatus = currentStatus;
-            let time = msToTime(total);
+            let time = msToMinutes(total);
             let color = "\x1b[0m";
 
             if (currentStatus === 'start') {
@@ -189,17 +185,6 @@ function addMinutes(name, number) {
     fs.appendFileSync(process.argv[2], `add,${name},${number * 60 * 1000},${Date.now()}\n`)
 }
 
-
-function addHours(name, number) {
-    let hours = new Number(number);
-    if (hours === NaN) {
-        console.log("Invalid value " + hours);
-        return;
-    }
-
-    fs.appendFileSync(process.argv[2], `add,${name},${hours * 60 * 60 * 1000},${Date.now()}\n`)
-}
-
 function isAlready(event, name) {
     if (currentLogs.length <= 0) {
         return false;
@@ -211,6 +196,10 @@ function isAlready(event, name) {
         .pop();
 
     return !!last && last.event === event;
+}
+
+function msToMinutes(ms) {
+    return (ms / (1000 * 60)).toFixed(1) + " Min"
 }
 
 function msToTime(ms) {

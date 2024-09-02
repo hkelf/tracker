@@ -15,5 +15,8 @@
   "bugs": {
     "url": "https://github.com/hkelf/tracker/issues"
   },
-  "homepage": "https://github.com/hkelf/tracker#readme"
+  "homepage": "https://github.com/hkelf/tracker#readme",
+  "dependencies": {
+    "tracker": "file:"
+  }
 }
